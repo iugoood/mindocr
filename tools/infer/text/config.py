@@ -168,6 +168,14 @@ def create_parser():
     parser.add_argument("--kie_batch_num", type=int, default=8)
 
     parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default="",
+        help="YAML config file specifying default arguments (default=" ")",
+    )
+
+    parser.add_argument(
         "--table_algorithm",
         type=str,
         default="TABLE_MASTER",
@@ -199,7 +207,11 @@ def create_parser():
     )
 
     parser.add_argument(
-        "--layout_algorithm", type=str, default="YOLOv8", choices=["YOLOv8"], help="layout analyzer algorithm"
+        "--layout_algorithm",
+        type=str,
+        default="YOLOv8",
+        choices=["YOLOv8", "LAYOUTLMV3"],
+        help="layout analyzer algorithm",
     )
     parser.add_argument(
         "--layout_model_dir",
@@ -219,6 +231,35 @@ def create_parser():
         default="O0",
         choices=["O0", "O1", "O2", "O3"],
         help="Auto Mixed Precision level. This setting only works on GPU and Ascend",
+    )
+
+    parser.add_argument(
+        "--cls_algorithm",
+        type=str,
+        default=None,
+        choices=["M3"],
+        help="classification algorithm. The default is None,"
+        "meaning that text orientation classification is not performed",
+    )
+    parser.add_argument(
+        "--cls_amp_level",
+        type=str,
+        default="O0",
+        choices=["O0", "O1", "O2", "O3"],
+        help="Auto Mixed Precision level. This setting only works on GPU and Ascend",
+    )
+    parser.add_argument(
+        "--cls_model_dir",
+        type=str,
+        help="directory containing the classification model checkpoint best.ckpt"
+        "or path to a specific checkpoint file.",
+    )
+    parser.add_argument("--cls_batch_num", type=int, default=8)
+    parser.add_argument(
+        "--save_cls_result",
+        type=str2bool,
+        default=True,
+        help="whether to save the text direction classification result",
     )
 
     return parser
