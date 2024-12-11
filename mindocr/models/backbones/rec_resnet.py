@@ -1,4 +1,4 @@
-from mindspore import nn
+from mindspore import nn, mint
 
 from ._registry import register_backbone, register_backbone_class
 
@@ -17,19 +17,17 @@ class ConvNormLayer(nn.Cell):
         super(ConvNormLayer, self).__init__()
 
         self.is_vd_mode = is_vd_mode
-        self.pool2d_avg = nn.AvgPool2d(
-            kernel_size=stride, stride=stride, pad_mode="same")
-        self.conv = nn.Conv2d(
+        self.pool2d_avg = mint.nn.AvgPool2d(
+            kernel_size=stride, stride=stride)
+        self.conv = mint.nn.Conv2d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,
             stride=1 if is_vd_mode else stride,
-            pad_mode='pad',
             padding=(kernel_size - 1) // 2,
         )
-        self.norm = nn.BatchNorm2d(num_features=out_channels, eps=1e-5, momentum=0.9,
-                                   gamma_init=1, beta_init=0, moving_mean_init=0, moving_var_init=1)
-        self.act_func = nn.ReLU()
+        self.norm = mint.nn.BatchNorm2d(num_features=out_channels, eps=1e-5, momentum=0.9)
+        self.act_func = mint.nn.ReLU()
         self.act = act
 
     def construct(self, x):
@@ -73,7 +71,7 @@ class BasicBlock(nn.Cell):
                 is_vd_mode=not if_first and stride[0] != 1)
 
         self.shortcut = shortcut
-        self.relu = nn.ReLU()
+        self.relu = mint.nn.ReLU()
 
     def construct(self, x):
         y = self.conv0(x)
@@ -94,19 +92,19 @@ class BasicBlockResNet31(nn.Cell):
     def __init__(self, in_channels, channels, stride=1, is_downsample=False):
         super().__init__()
         self.conv1 = self.conv3x3(in_channels, channels, stride)
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.relu = nn.ReLU()
+        self.bn1 = mint.nn.BatchNorm2d(channels)
+        self.relu = mint.nn.ReLU()
         self.conv2 = self.conv3x3(channels, channels)
-        self.bn2 = nn.BatchNorm2d(channels)
+        self.bn2 = mint.nn.BatchNorm2d(channels)
         self.is_downsample = is_downsample
         if is_downsample:
             self.downsample = nn.SequentialCell(
-                nn.Conv2d(
+                mint.nn.Conv2d(
                     in_channels,
                     channels * self.expansion,
                     1,
                     stride),
-                nn.BatchNorm2d(channels * self.expansion))
+                mint.nn.BatchNorm2d(channels * self.expansion))
         else:
             self.downsample = nn.SequentialCell()
         self.stride = stride
@@ -130,12 +128,11 @@ class BasicBlockResNet31(nn.Cell):
         return out
 
     def conv3x3(self, in_channel, out_channel, stride=1):
-        return nn.Conv2d(
+        return mint.nn.Conv2d(
             in_channel,
             out_channel,
             kernel_size=3,
             stride=stride,
-            pad_mode="pad",
             padding=1)
 
 
@@ -190,7 +187,7 @@ class RecResNet(nn.Cell):
             kernel_size=3,
             stride=1,
             act=True)
-        self.maxpool2d_1 = nn.MaxPool2d(kernel_size=3, stride=2, pad_mode='same')
+        self.maxpool2d_1 = mint.nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         self.block_list = []
         for block_id in range(len(depth)):
@@ -214,7 +211,7 @@ class RecResNet(nn.Cell):
                 self.block_list.append(basic_block)
 
         self.block_list = nn.SequentialCell(self.block_list)
-        self.maxpool2d_2 = nn.MaxPool2d(kernel_size=2, stride=2, pad_mode='same')
+        self.maxpool2d_2 = mint.nn.MaxPool2d(kernel_size=2, stride=2)
 
     def construct(self, x):
         y = self.conv1_1(x)
@@ -251,53 +248,53 @@ class RecResNet31(nn.Cell):
         self.last_stage_pool = last_stage_pool
 
         # conv 1 (Conv Conv)
-        self.conv1_1 = nn.Conv2d(
-            in_channels, channels[0], kernel_size=3, stride=1, pad_mode="pad", padding=1)
-        self.bn1_1 = nn.BatchNorm2d(channels[0])
-        self.relu1_1 = nn.ReLU()
+        self.conv1_1 = mint.nn.Conv2d(
+            in_channels, channels[0], kernel_size=3, stride=1, padding=1)
+        self.bn1_1 = mint.nn.BatchNorm2d(channels[0])
+        self.relu1_1 = mint.nn.ReLU()
 
-        self.conv1_2 = nn.Conv2d(
-            channels[0], channels[1], kernel_size=3, stride=1, pad_mode="pad", padding=1)
-        self.bn1_2 = nn.BatchNorm2d(channels[1])
-        self.relu1_2 = nn.ReLU()
+        self.conv1_2 = mint.nn.Conv2d(
+            channels[0], channels[1], kernel_size=3, stride=1, padding=1)
+        self.bn1_2 = mint.nn.BatchNorm2d(channels[1])
+        self.relu1_2 = mint.nn.ReLU()
 
         # conv 2 (Max-pooling, Residual block, Conv)
-        self.pool2 = nn.MaxPool2d(
+        self.pool2 = mint.nn.MaxPool2d(
             kernel_size=2, stride=2)
         self.block2 = self._make_layer(channels[1], channels[2], layers[0])
-        self.conv2 = nn.Conv2d(
-            channels[2], channels[2], kernel_size=3, stride=1, pad_mode="pad", padding=1)
-        self.bn2 = nn.BatchNorm2d(channels[2])
-        self.relu2 = nn.ReLU()
+        self.conv2 = mint.nn.Conv2d(
+            channels[2], channels[2], kernel_size=3, stride=1, padding=1)
+        self.bn2 = mint.nn.BatchNorm2d(channels[2])
+        self.relu2 = mint.nn.ReLU()
 
         # conv 3 (Max-pooling, Residual block, Conv)
-        self.pool3 = nn.MaxPool2d(
+        self.pool3 = mint.nn.MaxPool2d(
             kernel_size=2, stride=2)
         self.block3 = self._make_layer(channels[2], channels[3], layers[1])
-        self.conv3 = nn.Conv2d(
-            channels[3], channels[3], kernel_size=3, stride=1, pad_mode="pad", padding=1)
-        self.bn3 = nn.BatchNorm2d(channels[3])
-        self.relu3 = nn.ReLU()
+        self.conv3 = mint.nn.Conv2d(
+            channels[3], channels[3], kernel_size=3, stride=1, padding=1)
+        self.bn3 = mint.nn.BatchNorm2d(channels[3])
+        self.relu3 = mint.nn.ReLU()
 
         # conv 4 (Max-pooling, Residual block, Conv)
-        self.pool4 = nn.MaxPool2d(
-            kernel_size=(2, 1), stride=(2, 1), pad_mode="same")
+        self.pool4 = mint.nn.MaxPool2d(
+            kernel_size=(2, 1), stride=(2, 1))
         self.block4 = self._make_layer(channels[3], channels[4], layers[2])
-        self.conv4 = nn.Conv2d(
-            channels[4], channels[4], kernel_size=3, stride=1, pad_mode="pad", padding=1)
-        self.bn4 = nn.BatchNorm2d(channels[4])
-        self.relu4 = nn.ReLU()
+        self.conv4 = mint.nn.Conv2d(
+            channels[4], channels[4], kernel_size=3, stride=1, padding=1)
+        self.bn4 = mint.nn.BatchNorm2d(channels[4])
+        self.relu4 = mint.nn.ReLU()
 
         # conv 5 ((Max-pooling), Residual block, Conv)
         self.pool5 = None
         if self.last_stage_pool:
-            self.pool5 = nn.MaxPool2d(
+            self.pool5 = mint.nn.MaxPool2d(
                 kernel_size=2, stride=2)
         self.block5 = self._make_layer(channels[4], channels[5], layers[3])
-        self.conv5 = nn.Conv2d(
-            channels[5], channels[5], kernel_size=3, stride=1, pad_mode="pad", padding=1)
-        self.bn5 = nn.BatchNorm2d(channels[5])
-        self.relu5 = nn.ReLU()
+        self.conv5 = mint.nn.Conv2d(
+            channels[5], channels[5], kernel_size=3, stride=1, padding=1)
+        self.bn5 = mint.nn.BatchNorm2d(channels[5])
+        self.relu5 = mint.nn.ReLU()
 
     def _make_layer(self, input_channels, output_channels, blocks):
         layers = []

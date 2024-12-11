@@ -4,6 +4,7 @@ import numpy as np
 
 import mindspore as ms
 import mindspore.nn as nn
+from mindspore import mint
 
 from ..utils.abinet_layers import (
     ABINetBlock,
@@ -58,7 +59,7 @@ class BaseVision(ABINetBlock):
             mode=mode,
         )
 
-        self.cls = nn.Dense(
+        self.cls = mint.nn.Linear(
             self.out_channels,
             self.charset.num_classes,
             weight_init="HeUniform",
@@ -127,21 +128,20 @@ class ResTranformer(nn.Cell):
 
 
 def conv1x1(in_planes, out_planes, stride=1):
-    return nn.Conv2d(
-        in_planes, out_planes, kernel_size=1, stride=stride, has_bias=False
+    return mint.nn.Conv2d(
+        in_planes, out_planes, kernel_size=1, stride=stride, bias=False
     )
 
 
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
-    return nn.Conv2d(
+    return mint.nn.Conv2d(
         in_planes,
         out_planes,
         kernel_size=3,
         stride=stride,
-        pad_mode="pad",
         padding=1,
-        has_bias=False,
+        bias=False,
     )
 
 
@@ -151,10 +151,10 @@ class BasicBlock(nn.Cell):
     def __init__(self, inplanes, planes, stride=1, downsample=None):
         super(BasicBlock, self).__init__()
         self.conv1 = conv1x1(inplanes, planes)
-        self.bn1 = nn.BatchNorm2d(planes, momentum=0.1)
-        self.relu = nn.ReLU()
+        self.bn1 = mint.nn.BatchNorm2d(planes, momentum=0.1)
+        self.relu = mint.nn.ReLU()
         self.conv2 = conv3x3(planes, planes, stride)
-        self.bn2 = nn.BatchNorm2d(planes, momentum=0.1)
+        self.bn2 = mint.nn.BatchNorm2d(planes, momentum=0.1)
         self.downsample = downsample
         self.stride = stride
 
@@ -181,12 +181,12 @@ class ResNet(nn.Cell):
     def __init__(self, block, layers):
         self.inplanes = 32
         super(ResNet, self).__init__()
-        self.conv1 = nn.Conv2d(
-            3, 32, kernel_size=3, stride=1, padding=1, has_bias=False, pad_mode="pad"
+        self.conv1 = mint.nn.Conv2d(
+            3, 32, kernel_size=3, stride=1, padding=1, bias=False
         )
 
-        self.bn1 = nn.BatchNorm2d(32, momentum=0.1)
-        self.relu = nn.ReLU()
+        self.bn1 = mint.nn.BatchNorm2d(32, momentum=0.1)
+        self.relu = mint.nn.ReLU()
 
         self.layer1 = self._make_layer(block, 32, layers[0], stride=2)
         self.layer2 = self._make_layer(block, 64, layers[1], stride=1)
@@ -195,7 +195,7 @@ class ResNet(nn.Cell):
         self.layer5 = self._make_layer(block, 512, layers[4], stride=1)
 
         for _, cell in self.cells_and_names():
-            if isinstance(cell, nn.Conv2d):
+            if isinstance(cell, mint.nn.Conv2d):
                 n = cell.kernel_size[0] * cell.kernel_size[1] * cell.out_channels
                 cell.weight.set_data(
                     ms.common.initializer.initializer(
@@ -204,15 +204,15 @@ class ResNet(nn.Cell):
                         cell.weight.dtype,
                     )
                 )
-            elif isinstance(cell, nn.BatchNorm2d):
-                cell.gamma.set_data(
+            elif isinstance(cell, mint.nn.BatchNorm2d):
+                cell.running_var.set_data(
                     ms.common.initializer.initializer(
-                        "ones", cell.gamma.shape, cell.gamma.dtype
+                        "ones", cell.running_var.shape, cell.running_var.dtype
                     )
                 )
-                cell.beta.set_data(
+                cell.running_mean.set_data(
                     ms.common.initializer.initializer(
-                        "zeros", cell.beta.shape, cell.beta.dtype
+                        "zeros", cell.running_mean.shape, cell.running_mean.dtype
                     )
                 )
 
@@ -220,14 +220,14 @@ class ResNet(nn.Cell):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.SequentialCell(
-                nn.Conv2d(
+                mint.nn.Conv2d(
                     self.inplanes,
                     planes * block.expansion,
                     kernel_size=1,
                     stride=stride,
-                    has_bias=False,
+                    bias=False,
                 ),
-                nn.BatchNorm2d(planes * block.expansion, momentum=0.1),
+                mint.nn.BatchNorm2d(planes * block.expansion, momentum=0.1),
             )
 
             layers = []

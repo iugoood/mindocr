@@ -2,7 +2,7 @@ from typing import List
 
 import mindspore.nn as nn
 import mindspore.ops as ops
-from mindspore import Tensor
+from mindspore import Tensor, mint
 
 from ..utils import MultiHeadAttention, PositionalEncoding, PositionwiseFeedForward
 
@@ -49,9 +49,9 @@ class MasterEncoder(nn.Cell):
             ]
         )
         self.position = PositionalEncoding(in_channels, dropout)
-        self.layer_norm = nn.LayerNorm([in_channels], epsilon=1e-6)
+        self.layer_norm = mint.nn.LayerNorm([in_channels], eps=1e-6)
         self.stacks = stacks
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = mint.nn.Dropout(p=dropout)
         self.with_encoder = with_encoder
 
     def construct(self, features: List[Tensor]) -> Tensor:
@@ -59,7 +59,7 @@ class MasterEncoder(nn.Cell):
         x = features[0]
         N, C, _, _ = x.shape
         x = x.reshape(N, C, -1)
-        x = ops.transpose(x, (0, 2, 1))
+        x = mint.permute(x, (0, 2, 1))
 
         output = self.position(x)
         if self.with_encoder:

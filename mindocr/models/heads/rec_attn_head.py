@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 import mindspore as ms
 import mindspore.nn as nn
 import mindspore.ops as ops
-from mindspore import Tensor
+from mindspore import Tensor, mint
 
 from ..utils import GRUCell
 
@@ -37,7 +37,7 @@ class AttentionHead(nn.Cell):
         self.attention_cell = AttentionCell(
             self.in_channels, self.hidden_size, self.num_classes
         )
-        self.generator = nn.Dense(hidden_size, self.num_classes)
+        self.generator = mint.nn.Linear(hidden_size, self.num_classes)
 
         self.one = Tensor(1.0, ms.float32)
         self.zero = Tensor(0.0, ms.float32)
@@ -50,11 +50,11 @@ class AttentionHead(nn.Cell):
 
     def construct(self, inputs: Tensor, targets: Optional[Tuple[Tensor, ...]] = None) -> Tensor:
         # convert the inputs from [W, BS, C] to [BS, W, C]
-        inputs = ops.transpose(inputs, (1, 0, 2))
+        inputs = mint.permute(inputs, (1, 0, 2))
         N = inputs.shape[0]
         num_steps = self.batch_max_length + 1  # for <STOP> symbol
 
-        hidden = ops.zeros((N, self.hidden_size), inputs.dtype)
+        hidden = mint.zeros((N, self.hidden_size), dtype=inputs.dtype)
 
         if targets is not None:
             # training branch
@@ -63,8 +63,8 @@ class AttentionHead(nn.Cell):
             for i in range(num_steps):
                 char_onehots = self._char_to_onehot(targets[:, i], self.num_classes)
                 hidden, _ = self.attention_cell(hidden, inputs, char_onehots)
-                output_hiddens.append(ops.expand_dims(hidden, axis=1))
-            output = ops.concat(output_hiddens, axis=1)
+                output_hiddens.append(mint.unsqueeze(hidden, dim=1))
+            output = mint.concat(output_hiddens, dim=1)
             probs = self.generator(output)
         else:
             # inference branch
@@ -78,37 +78,37 @@ class AttentionHead(nn.Cell):
                 probs.append(probs_step)
                 next_input = self.argmax(probs_step)
                 targets = next_input
-            probs = ops.stack(probs, axis=1)
-            probs = ops.softmax(probs, axis=2)
+            probs = mint.stack(probs, dim=1)
+            probs = mint.nn.Softmax(dim=2)(probs)
         return probs
 
 
 class AttentionCell(nn.Cell):
     def __init__(self, input_size: int, hidden_size: int, num_embeddings: int) -> None:
         super().__init__()
-        self.i2h = nn.Dense(input_size, hidden_size, has_bias=False)
-        self.h2h = nn.Dense(hidden_size, hidden_size)
-        self.score = nn.Dense(hidden_size, 1, has_bias=False)
+        self.i2h = mint.nn.Linear(input_size, hidden_size, bias=False)
+        self.h2h = mint.nn.Linear(hidden_size, hidden_size)
+        self.score = mint.nn.Linear(hidden_size, 1, bias=False)
         self.rnn = GRUCell(input_size + num_embeddings, hidden_size)
         self.hidden_size = hidden_size
 
-        self.bmm = ops.BatchMatMul()
+        self.bmm = mint.bmm
 
     def construct(
         self, prev_hidden: Tensor, batch_H: Tensor, char_onehots: Tensor
     ) -> Tuple[Tensor, Tensor]:
         batch_H_proj = self.i2h(batch_H)
         prev_hidden_proj = self.h2h(prev_hidden)
-        prev_hidden_proj = ops.expand_dims(prev_hidden_proj, 1)
+        prev_hidden_proj = mint.unsqueeze(prev_hidden_proj, 1)
 
-        res = ops.add(batch_H_proj, prev_hidden_proj)
+        res = mint.add(batch_H_proj, prev_hidden_proj)
         res = ops.tanh(res)
         e = self.score(res)
 
-        alpha = ops.softmax(e, axis=1)
-        alpha = ops.transpose(alpha, (0, 2, 1))
-        context = ops.squeeze(self.bmm(alpha, batch_H), axis=1)
-        concat_context = ops.concat([context, char_onehots], 1)
+        alpha = mint.nn.Softmax(dim=1)(e)
+        alpha = mint.permute(alpha, (0, 2, 1))
+        context = mint.squeeze(self.bmm(alpha, batch_H), dim=1)
+        concat_context = mint.concat([context, char_onehots], dim=1)
 
         cur_hidden = self.rnn(concat_context, prev_hidden)
         return cur_hidden, alpha

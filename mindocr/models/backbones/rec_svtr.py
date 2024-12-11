@@ -5,7 +5,7 @@ import numpy as np
 import mindspore as ms
 import mindspore.nn as nn
 import mindspore.ops as ops
-from mindspore import Parameter, Tensor
+from mindspore import Parameter, Tensor, mint
 
 from ._registry import register_backbone, register_backbone_class
 from .mindcv_models.layers import DropPath
@@ -23,20 +23,19 @@ class ConvBNLayer(nn.Cell):
         padding: int = 0,
         bias_attr: bool = False,
         groups: int = 1,
-        act: Type[nn.Cell] = nn.GELU,
+        act: Type[nn.Cell] = mint.nn.GELU,
     ) -> None:
         super(ConvBNLayer, self).__init__()
-        self.conv = nn.Conv2d(
+        self.conv = mint.nn.Conv2d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,
             stride=stride,
-            pad_mode="pad",
             padding=padding,
-            group=groups,
-            has_bias=bias_attr,
+            groups=groups,
+            bias=bias_attr,
         )
-        self.norm = nn.BatchNorm2d(out_channels)
+        self.norm = mint.nn.BatchNorm2d(out_channels)
         self.act = act()
 
     def construct(self, inputs: Tensor) -> Tensor:
@@ -52,16 +51,16 @@ class Mlp(nn.Cell):
         in_features: int,
         hidden_features: int = None,
         out_features: int = None,
-        act_layer: Type[nn.Cell] = nn.GELU,
+        act_layer: Type[nn.Cell] = mint.nn.GELU,
         drop: float = 0.0,
     ) -> None:
         super(Mlp, self).__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = nn.Dense(in_features, hidden_features)
+        self.fc1 = mint.nn.Linear(in_features, hidden_features)
         self.act = act_layer()
-        self.fc2 = nn.Dense(hidden_features, out_features)
-        self.drop = nn.Dropout(p=drop)
+        self.fc2 = mint.nn.Linear(hidden_features, out_features)
+        self.drop = mint.nn.Dropout(p=drop)
 
     def construct(self, x: Tensor) -> Tensor:
         x = self.fc1(x)
@@ -104,7 +103,7 @@ class ConvMixer(nn.Cell):
         w = self.HW[1]
         x = x.transpose([0, 2, 1]).reshape([-1, self.dim, h, w])
         x = self.local_mixer(x)
-        x = ops.reshape(x, (x.shape[0], x.shape[1], -1))
+        x = mint.reshape(x, (x.shape[0], x.shape[1], -1))
         x = x.transpose([0, 2, 1])
         return x
 
@@ -127,10 +126,10 @@ class Attention(nn.Cell):
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim**-0.5
 
-        self.qkv = nn.Dense(dim, dim * 3, has_bias=qkv_bias)
-        self.attn_drop = nn.Dropout(p=attn_drop)
-        self.proj = nn.Dense(dim, dim)
-        self.proj_drop = nn.Dropout(p=proj_drop)
+        self.qkv = mint.nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = mint.nn.Dropout(p=attn_drop)
+        self.proj = mint.nn.Linear(dim, dim)
+        self.proj_drop = mint.nn.Dropout(p=proj_drop)
         self.HW = HW
         if HW is not None:
             H = HW[0]
@@ -159,18 +158,18 @@ class Attention(nn.Cell):
         else:
             _, N, C = x.shape
         qkv = self.qkv(x)
-        qkv = ops.reshape(qkv, (-1, N, 3, self.num_heads, C // self.num_heads))
-        qkv = ops.transpose(qkv, (2, 0, 3, 1, 4))
+        qkv = mint.reshape(qkv, (-1, N, 3, self.num_heads, C // self.num_heads))
+        qkv = mint.permute(qkv, (2, 0, 3, 1, 4))
         q, k, v = qkv[0] * self.scale, qkv[1], qkv[2]
         attn = self.matmul(q, k.transpose((0, 1, 3, 2)))
         if self.mixer == "Local":
             attn += self.mask
-        attn = ops.softmax(attn, axis=-1)
+        attn = mint.nn.Softmax(dim=-1)(attn)
         attn = self.attn_drop(attn)
 
         x = self.matmul(attn, v)
-        x = ops.transpose(x, (0, 2, 1, 3))
-        x = ops.reshape(x, (-1, N, C))
+        x = mint.permute(x, (0, 2, 1, 3))
+        x = mint.reshape(x, (-1, N, C))
 
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -192,13 +191,13 @@ class Block(nn.Cell):
         attn_drop: float = 0.0,
         drop_path: float = 0.0,
         act_layer: Type[nn.Cell] = nn.GELU,
-        norm_layer: Union[str, Type[nn.Cell]] = "nn.LayerNorm",
+        norm_layer: Union[str, Type[nn.Cell]] = "mint.nn.LayerNorm",
         epsilon: float = 1e-6,
         prenorm: bool = True,
     ) -> None:
         super().__init__()
         if isinstance(norm_layer, str):
-            self.norm1 = eval(norm_layer)([dim], epsilon=epsilon)
+            self.norm1 = eval(norm_layer)([dim], eps=epsilon)
         else:
             self.norm1 = norm_layer([dim])
         if mixer == "Global" or mixer == "Local":
@@ -220,7 +219,7 @@ class Block(nn.Cell):
 
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         if isinstance(norm_layer, str):
-            self.norm2 = eval(norm_layer)([dim], epsilon=epsilon)
+            self.norm2 = eval(norm_layer)([dim], eps=epsilon)
         else:
             self.norm2 = norm_layer([dim])
         mlp_hidden_dim = int(dim * mlp_ratio)
@@ -270,7 +269,7 @@ class PatchEmbed(nn.Cell):
                         kernel_size=3,
                         stride=2,
                         padding=1,
-                        act=nn.GELU,
+                        act=mint.nn.GELU,
                         bias_attr=False,
                     ),
                     ConvBNLayer(
@@ -279,7 +278,7 @@ class PatchEmbed(nn.Cell):
                         kernel_size=3,
                         stride=2,
                         padding=1,
-                        act=nn.GELU,
+                        act=mint.nn.GELU,
                         bias_attr=False,
                     ),
                 )
@@ -291,7 +290,7 @@ class PatchEmbed(nn.Cell):
                         kernel_size=3,
                         stride=2,
                         padding=1,
-                        act=nn.GELU,
+                        act=mint.nn.GELU,
                         bias_attr=False,
                     ),
                     ConvBNLayer(
@@ -300,7 +299,7 @@ class PatchEmbed(nn.Cell):
                         kernel_size=3,
                         stride=2,
                         padding=1,
-                        act=nn.GELU,
+                        act=mint.nn.GELU,
                         bias_attr=False,
                     ),
                     ConvBNLayer(
@@ -309,17 +308,17 @@ class PatchEmbed(nn.Cell):
                         kernel_size=3,
                         stride=2,
                         padding=1,
-                        act=nn.GELU,
+                        act=mint.nn.GELU,
                         bias_attr=False,
                     ),
                 )
         elif mode == "linear":
-            self.proj = nn.Conv2d(
+            self.proj = mint.nn.Conv2d(
                 1,
                 embed_dim,
                 kernel_size=patch_size,
                 stride=patch_size,
-                has_bias=True,
+                bias=True,
             )
             self.num_patches = (
                 img_size[0] // patch_size[0] * img_size[1] // patch_size[1]
@@ -327,7 +326,7 @@ class PatchEmbed(nn.Cell):
 
     def construct(self, x: Tensor) -> Tensor:
         x = self.proj(x)
-        x = ops.reshape(x, (x.shape[0], x.shape[1], -1))
+        x = mint.reshape(x, (x.shape[0], x.shape[1], -1))
         x = x.transpose((0, 2, 1))
         return x
 
@@ -339,19 +338,19 @@ class SubSample(nn.Cell):
         out_channels: int,
         types: str = "Pool",
         stride: Tuple[int, int] = (2, 1),
-        sub_norm: Union[str, Type[nn.Cell]] = "nn.LayerNorm",
+        sub_norm: Union[str, Type[nn.Cell]] = "mint.nn.LayerNorm",
         act: Optional[Type[nn.Cell]] = None,
     ) -> None:
         super().__init__()
         self.types = types
         if types == "Pool":
-            self.avgpool = nn.AvgPool2d(
-                kernel_size=[3, 5], stride=stride, pad_mode="same"
+            self.avgpool = mint.nn.AvgPool2d(
+                kernel_size=[3, 5], stride=stride
             )
-            self.maxpool = nn.MaxPool2d(
-                kernel_size=[3, 5], stride=stride, pad_mode="same"
+            self.maxpool = mint.nn.MaxPool2d(
+                kernel_size=[3, 5], stride=stride
             )
-            self.proj = nn.Dense(in_channels, out_channels)
+            self.proj = mint.nn.Linear(in_channels, out_channels)
         else:
             self.conv = nn.Conv2d(
                 in_channels,
@@ -378,7 +377,7 @@ class SubSample(nn.Cell):
             )
         else:
             x = self.conv(x)
-            x = ops.reshape(x, (x.shape[0], x.shape[1], -1))
+            x = mint.reshape(x, (x.shape[0], x.shape[1], -1))
             out = x.transpose((0, 2, 1))
         out = self.norm(out)
         if self.act is not None:
@@ -406,12 +405,12 @@ class SVTRNet(nn.Cell):
         last_drop: float = 0.1,
         attn_drop_rate: float = 0.0,
         drop_path_rate: float = 0.1,
-        norm_layer: Union[str, Type[nn.Cell]] = "nn.LayerNorm",
-        sub_norm: Union[str, Type[nn.Cell]] = "nn.LayerNorm",
+        norm_layer: Union[str, Type[nn.Cell]] = "mint.nn.LayerNorm",
+        sub_norm: Union[str, Type[nn.Cell]] = "mint.nn.LayerNorm",
         epsilon: float = 1e-6,
         out_channels: int = 192,
         block_unit: str = "Block",
-        act: str = "nn.GELU",
+        act: str = "mint.nn.GELU",
         last_stage: bool = True,
         extra_pool_at_last_stage: int = 1,
         sub_num: int = 2,
@@ -479,7 +478,7 @@ class SVTRNet(nn.Cell):
             )
         else:
             self.pos_embed = None
-        self.pos_drop = nn.Dropout(p=drop_rate)
+        self.pos_drop = mint.nn.Dropout(p=drop_rate)
 
         Block_unit = eval(block_unit)
         dpr = np.linspace(0, drop_path_rate, num=sum(depth))
@@ -574,34 +573,32 @@ class SVTRNet(nn.Cell):
         )
         self.last_stage = last_stage
         if last_stage:
-            self.last_conv = nn.Conv2d(
+            self.last_conv = mint.nn.Conv2d(
                 in_channels=embed_dim[2],
                 out_channels=self.out_channels,
                 kernel_size=1,
                 stride=1,
                 padding=0,
-                pad_mode="pad",
-                has_bias=False,
+                bias=False,
             )
-            self.hardswish = nn.HSwish()
-            self.dropout = nn.Dropout(p=last_drop)
+            self.hardswish = mint.nn.Hardswish()
+            self.dropout = mint.nn.Dropout(p=last_drop)
 
             if extra_pool_at_last_stage > 1:
-                self.pool = ops.AvgPool(
+                self.pool = mint.nn.AvgPool(
                     kernel_size=(1, extra_pool_at_last_stage),
                     strides=(1, extra_pool_at_last_stage),
-                    pad_mode="same",
                 )
             else:
                 self.pool = nn.Identity()
 
         if not prenorm:
-            self.norm = eval(norm_layer)([embed_dim[-1]], epsilon=epsilon)
+            self.norm = eval(norm_layer)([embed_dim[-1]], eps=epsilon)
         self.use_lenhead = use_lenhead
         if use_lenhead:
-            self.len_conv = nn.Dense(embed_dim[2], self.out_channels)
-            self.hardswish_len = nn.HSwish()
-            self.dropout_len = nn.Dropout(p=last_drop)
+            self.len_conv = mint.nn.Linear(embed_dim[2], self.out_channels)
+            self.hardswish_len = mint.nn.Hardswish()
+            self.dropout_len = mint.nn.Dropout(p=last_drop)
 
     def forward_features(self, x: Tensor) -> Tensor:
         x = self.patch_embed(x)
@@ -643,10 +640,10 @@ class SVTRNet(nn.Cell):
                 h = self.HW[0] // 4
             else:
                 h = self.HW[0]
-            x = ops.mean(
+            x = mint.mean(
                 x.transpose([0, 2, 1]).reshape([-1, self.embed_dim[2], h, self.HW[1]]),
-                axis=2,
-                keep_dims=True,
+                dim=2,
+                keepdim=True,
             )
             x = self.pool(x)
             x = self.last_conv(x)

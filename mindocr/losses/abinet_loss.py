@@ -18,9 +18,9 @@ class ABINetLoss(nn.Cell):
             return all_res
 
         def merge(items):
-            concat_op = ms.ops.Concat(axis=0)
+            concat_op = ms.mint.concat
             if isinstance(items[0], ms.Tensor):
-                return concat_op(items)
+                return concat_op(items, dim=0)
             else:
                 return items[0]
 
@@ -111,9 +111,9 @@ class SoftCrossEntropyLoss(nn.Cell):
             mask_list.append(mask_pt)
             gt_list.append(gt_labels[i])
 
-        concat_pt_logits = ms.ops.concat(data_pt_list)
-        concat_mask = ms.ops.concat(mask_list)
-        concat_gt_labels = ms.ops.concat(gt_list)
+        concat_pt_logits = ms.mint.concat(data_pt_list)
+        concat_mask = ms.mint.concat(mask_list)
+        concat_gt_labels = ms.mint.concat(gt_list)
         concat_mask = concat_mask.astype(ms.float16)
         concat_pt_logits = concat_pt_logits * concat_mask
 

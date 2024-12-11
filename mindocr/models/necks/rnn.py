@@ -3,7 +3,7 @@ from typing import List, Optional
 import numpy as np
 
 import mindspore.ops.functional as F
-from mindspore import Tensor, nn, ops, version
+from mindspore import Tensor, nn, ops, version, mint
 from mindspore.common import dtype
 
 __all__ = ['RNNEncoder']
@@ -53,8 +53,8 @@ class RNNEncoder(nn.Cell):
 
     def construct(self, features: List[Tensor]) -> Tensor:
         x = features[0]
-        x = ops.squeeze(x, axis=2)  # [N, C, W]
-        x = ops.transpose(x, (2, 0, 1))  # [W, N, C]
+        x = mint.squeeze(x, dim=2)  # [N, C, W]
+        x = mint.permute(x, (2, 0, 1))  # [W, N, C]
 
         if self.encoder_cast_to_fp16 and self._amp_level == "O0":
             x = F.cast(x, dtype.float16)

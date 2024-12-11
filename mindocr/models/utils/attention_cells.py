@@ -5,7 +5,7 @@ import numpy as np
 import mindspore as ms
 import mindspore.nn as nn
 import mindspore.ops as ops
-from mindspore import Tensor
+from mindspore import Tensor, mint
 
 __all__ = ["MultiHeadAttention", "PositionwiseFeedForward", "PositionalEncoding", "SEModule"]
 
@@ -21,9 +21,9 @@ class MultiHeadAttention(nn.Cell):
         # requires d_v = d_k, d_q = d_k = d_v = d_m / h
         self.d_k = int(dimensions / multi_attention_heads)
         self.h = multi_attention_heads
-        self.linears = nn.CellList([nn.Dense(dimensions, dimensions) for _ in range(4)])
+        self.linears = nn.CellList([mint.nn.Linear(dimensions, dimensions) for _ in range(4)])
         self.attention = None
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = mint.nn.Dropout(p=dropout)
 
         self.matmul = ops.BatchMatMul()
 
@@ -37,10 +37,10 @@ class MultiHeadAttention(nn.Cell):
 
         if mask is not None:
             score = ops.masked_fill(
-                score, mask == 0, ms.Tensor(-np.inf, score.dtype)
+                score, mask == 0, ms.Tensor(-1e9, score.dtype)
             )  # score (N, h, seq_len, seq_len)
 
-        p_attn = ops.softmax(score, axis=-1)
+        p_attn = mint.nn.Softmax(dim=-1)(score)
         # (N, h, seq_len, d_v), (N, h, seq_len, seq_len)
         return self.matmul(p_attn, value), p_attn
 
@@ -83,9 +83,9 @@ class PositionwiseFeedForward(nn.Cell):
         self, dimensions: int, feed_forward_dimensions: int, dropout: float = 0.1
     ) -> None:
         super(PositionwiseFeedForward, self).__init__()
-        self.w_1 = nn.Dense(dimensions, feed_forward_dimensions)
-        self.w_2 = nn.Dense(feed_forward_dimensions, dimensions)
-        self.dropout = nn.Dropout(p=dropout)
+        self.w_1 = mint.nn.Linear(dimensions, feed_forward_dimensions)
+        self.w_2 = mint.nn.Linear(feed_forward_dimensions, dimensions)
+        self.dropout = mint.nn.Dropout(p=dropout)
 
     def construct(self, input_tensor: Tensor) -> Tensor:
         return self.w_2(self.dropout(ops.relu(self.w_1(input_tensor))))
@@ -96,7 +96,7 @@ class PositionalEncoding(nn.Cell):
         self, dimensions: int, dropout: float = 0.1, max_len: int = 5000
     ) -> None:
         super(PositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = mint.nn.Dropout(p=dropout)
 
         # Compute the positional encodings once in log space.
         pe = np.zeros((max_len, dimensions), dtype=np.float32)

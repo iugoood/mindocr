@@ -5,7 +5,7 @@ import numpy as np
 import mindspore as ms
 import mindspore.nn as nn
 import mindspore.ops as ops
-from mindspore import Tensor
+from mindspore import Tensor, mint
 
 from ...utils.misc import is_ms_version_2
 from ..utils.attention_cells import MultiHeadAttention, PositionalEncoding, PositionwiseFeedForward
@@ -66,12 +66,12 @@ class MasterDecoder(nn.Cell):
         )
         self.position = PositionalEncoding(in_channels, dropout)
         self.stacks = stacks
-        self.dropout = nn.Dropout(p=dropout)
-        self.layer_norm = nn.LayerNorm([in_channels], epsilon=1e-6)
+        self.dropout = mint.nn.Dropout(p=dropout)
+        self.layer_norm = mint.nn.LayerNorm([in_channels], eps=1e-6)
         self.embedding = nn.Embedding(out_channels, in_channels)
         self.sqrt_model_size = np.sqrt(in_channels)
         self.padding_symbol = padding_symbol
-        self.generator = nn.Dense(in_channels, out_channels)
+        self.generator = mint.nn.Linear(in_channels, out_channels)
 
         # mask related
         if is_ms_version_2():
@@ -86,7 +86,7 @@ class MasterDecoder(nn.Cell):
         target_pad_mask = target_pad_mask[:, None, :, None]
         target_pad_mask = ops.cast(target_pad_mask, ms.int32)
         target_length = targets.shape[1]
-        target_sub_mask = self.tril(ops.ones((target_length, target_length), ms.int32))
+        target_sub_mask = self.tril(mint.ones((target_length, target_length), dtype=ms.int32))
         target_mask = ops.bitwise_and(target_pad_mask, target_sub_mask)
         return target_mask
 
@@ -142,16 +142,16 @@ class MasterDecoder(nn.Cell):
         else:
             # inference branch
             # <GO> symbol
-            targets = ops.zeros((N, 1), ms.int32)
+            targets = mint.zeros((N, 1), dtype=ms.int32)
             probs = list()
 
             for i in range(num_steps):
                 target_mask = self._generate_target_mask(targets)
                 probs_step = self._decode(inputs, targets, target_mask=target_mask)
                 next_input = self.argmax(probs_step)
-                targets = ops.concat([targets, next_input[:, i: i+1]], axis=1)
+                targets = mint.concat([targets, next_input[:, i: i+1]], dim=1)
                 probs.append(probs_step[:, i])
 
-            probs = ops.stack(probs, axis=1)
-            probs = ops.softmax(probs, axis=-1)
+            probs = mint.stack(probs, dim=1)
+            probs = mint.nn.Softmax(dim=-1)(probs)
         return probs

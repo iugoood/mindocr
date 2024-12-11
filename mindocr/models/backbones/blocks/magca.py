@@ -1,6 +1,6 @@
 import mindspore.nn as nn
 import mindspore.ops as ops
-from mindspore import Tensor
+from mindspore import Tensor, mint
 
 __all__ = ["MultiAspectGCAttention"]
 
@@ -9,7 +9,7 @@ class _LayerNorm(nn.Cell):
     """A temp replacement of nn.LayerNorm([normalized_shape, 1, 1], 1, 1)"""
     def __init__(self, normalized_shape):
         super().__init__()
-        self.layer_norm = nn.LayerNorm(normalized_shape)
+        self.layer_norm = mint.nn.LayerNorm(normalized_shape)
 
     def construct(self, x: Tensor):
         x = x.reshape((x.shape[0], -1))
@@ -47,38 +47,38 @@ class MultiAspectGCAttention(nn.Cell):
         self.single_header_inplanes = int(inplanes / headers)
 
         if pooling_type == "att":
-            self.conv_mask = nn.Conv2d(
-                self.single_header_inplanes, 1, kernel_size=1, has_bias=True
+            self.conv_mask = mint.nn.Conv2d(
+                self.single_header_inplanes, 1, kernel_size=1, bias=True
             )
-            self.softmax = ops.Softmax(axis=2)
+            self.softmax = mint.nn.Softmax(dim=2)
         else:
-            self.avg_pool = nn.AdaptiveAvgPool2d(1)
+            self.avg_pool = mint.nn.AdaptiveAvgPool2d(1)
 
         if fusion_type == "channel_add":
             self.channel_add_conv = nn.SequentialCell(
-                nn.Conv2d(self.inplanes, self.planes, kernel_size=1, has_bias=True),
+                mint.nn.Conv2d(self.inplanes, self.planes, kernel_size=1, bias=True),
                 _LayerNorm([self.planes]),
-                nn.ReLU(),
-                nn.Conv2d(self.planes, self.inplanes, kernel_size=1, has_bias=True),
+                mint.nn.ReLU(),
+                mint.nn.Conv2d(self.planes, self.inplanes, kernel_size=1, bias=True),
             )
         elif fusion_type == "channel_concat":
             self.channel_concat_conv = nn.SequentialCell(
-                nn.Conv2d(self.inplanes, self.planes, kernel_size=1, has_bias=True),
+                mint.nn.Conv2d(self.inplanes, self.planes, kernel_size=1, bias=True),
                 _LayerNorm([self.planes]),
-                nn.ReLU(),
-                nn.Conv2d(self.planes, self.inplanes, kernel_size=1, has_bias=True),
+                mint.nn.ReLU(),
+                mint.nn.Conv2d(self.planes, self.inplanes, kernel_size=1, bias=True),
             )
             # for concat
-            self.cat_conv = nn.Conv2d(
-                2 * self.inplanes, self.inplanes, kernel_size=1, has_bias=True
+            self.cat_conv = mint.nn.Conv2d(
+                2 * self.inplanes, self.inplanes, kernel_size=1, bias=True
             )
             self.layer_norm = ops.LayerNorm(begin_norm_axis=1, begin_params_axis=1)
         elif fusion_type == "channel_mul":
             self.channel_mul_conv = nn.SequentialCell(
-                nn.Conv2d(self.inplanes, self.planes, kernel_size=1, has_bias=True),
+                mint.nn.Conv2d(self.inplanes, self.planes, kernel_size=1, bias=True),
                 _LayerNorm([self.planes]),
-                nn.ReLU(),
-                nn.Conv2d(self.planes, self.inplanes, kernel_size=1, has_bias=True),
+                mint.nn.ReLU(),
+                mint.nn.Conv2d(self.planes, self.inplanes, kernel_size=1, bias=True),
             )
 
     def spatial_pool(self, x: Tensor) -> Tensor:
@@ -94,7 +94,7 @@ class MultiAspectGCAttention(nn.Cell):
             )
 
             # [N*headers, 1, C', H * W]
-            input_x = ops.expand_dims(input_x, 1)
+            input_x = mint.unsqueeze(input_x, 1)
             # [N*headers, 1, H, W]
             context_mask = self.conv_mask(x)
             # [N*headers, 1, H * W]
@@ -102,15 +102,15 @@ class MultiAspectGCAttention(nn.Cell):
 
             # scale variance
             if self.att_scale and self.headers > 1:
-                context_mask = context_mask / ops.sqrt(self.single_header_inplanes)
+                context_mask = context_mask / mint.sqrt(self.single_header_inplanes)
 
             # [N*headers, 1, H * W]
             context_mask = self.softmax(context_mask)
 
             # [N*headers, 1, H * W, 1]
-            context_mask = ops.expand_dims(context_mask, -1)
+            context_mask = mint.unsqueeze(context_mask, -1)
             # [N*headers, 1, C', 1] = [N*headers, 1, C', H * W] * [N*headers, 1, H * W, 1]
-            context = ops.matmul(input_x, context_mask)
+            context = mint.matmul(input_x, context_mask)
 
             # [N, headers * C', 1, 1]
             context = context.reshape(
@@ -130,7 +130,7 @@ class MultiAspectGCAttention(nn.Cell):
 
         if self.fusion_type == "channel_mul":
             # [N, C, 1, 1]
-            channel_mul_term = ops.sigmoid(self.channel_mul_conv(context))
+            channel_mul_term = mint.sigmoid(self.channel_mul_conv(context))
             out = out * channel_mul_term
         elif self.fusion_type == "channel_add":
             # [N, C, 1, 1]
@@ -143,12 +143,12 @@ class MultiAspectGCAttention(nn.Cell):
             # use concat
             _, _, H, W = out.shape
 
-            channel_concat_term = ops.tile(channel_concat_term, (1, 1, H, W))
+            channel_concat_term = mint.tile(channel_concat_term, (1, 1, H, W))
 
-            out = ops.concat([out, channel_concat_term], axis=1)
+            out = mint.concat([out, channel_concat_term], axis=1)
             out = self.cat_conv(out)
-            gamma = ops.ones(out.shape[1:], out.dtype)
-            beta = ops.zeros(out.shape[1:], out.dtype)
+            gamma = mint.ones(out.shape[1:], dtype=out.dtype)
+            beta = mint.zeros(out.shape[1:], dtype=out.dtype)
             out, _, _ = self.layer_norm(out, gamma, beta)
             out = ops.relu(out)
 

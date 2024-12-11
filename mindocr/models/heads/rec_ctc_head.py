@@ -2,7 +2,7 @@ import math
 from typing import Optional
 
 import mindspore as ms
-from mindspore import nn, ops
+from mindspore import nn, ops, mint
 from mindspore.common.initializer import Uniform
 
 __all__ = ['CTCHead']
@@ -52,11 +52,11 @@ class CTCHead(nn.Cell):
             bias_init = crnn_head_initialization(in_channels)
 
         if mid_channels is None:
-            self.dense1 = nn.Dense(in_channels, out_channels, weight_init=weight_init, bias_init=bias_init)
+            self.dense1 = mint.nn.Linear(in_channels, out_channels, weight_init=weight_init, bias_init=bias_init)
         else:
-            self.dense1 = nn.Dense(in_channels, mid_channels, weight_init=weight_init, bias_init=bias_init)
-            self.dropout = nn.Dropout(p=dropout)
-            self.dense2 = nn.Dense(mid_channels, out_channels, weight_init=weight_init, bias_init=bias_init)
+            self.dense1 = mint.nn.Linear(in_channels, mid_channels, weight_init=weight_init, bias_init=bias_init)
+            self.dropout = mint.nn.Dropout(p=dropout)
+            self.dense2 = mint.nn.Linear(mid_channels, out_channels, weight_init=weight_init, bias_init=bias_init)
 
     def construct(self, x: ms.Tensor) -> ms.Tensor:
         h = self.dense1(x)
@@ -65,7 +65,7 @@ class CTCHead(nn.Cell):
             h = self.dense2(h)
 
         if not self.training:
-            h = ops.Softmax(axis=2)(h)
-            h = h.transpose((1, 0, 2))
+            h = mint.nn.Softmax(dim=2)(h)
+            h = mint.permute(h, (1, 0, 2))
 
         return h

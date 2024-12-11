@@ -6,7 +6,7 @@ import numpy as np
 import mindspore as ms
 import mindspore.nn as nn
 import mindspore.ops as ops
-from mindspore import Tensor
+from mindspore import Tensor, mint
 
 
 def grid_sample(input: Tensor, grid: Tensor, canvas: Optional[Tensor] = None) -> Tensor:
@@ -117,11 +117,11 @@ class TPSSpatialTransformer(nn.Cell):
     ) -> Tuple[Tensor, Tensor]:
         batch_size = ops.shape(source_control_points)[0]
 
-        padding_matrix = ops.tile(self.padding_matrix, (batch_size, 1, 1))
-        Y = ops.concat([source_control_points, padding_matrix], axis=1)
-        mapping_matrix = ops.matmul(self.inverse_kernel.expand_dims(0), Y)
-        source_coordinate = ops.matmul(self.target_coordinate_repr.expand_dims(0), mapping_matrix)
-        grid = ops.reshape(
+        padding_matrix = mint.tile(self.padding_matrix, (batch_size, 1, 1))
+        Y = mint.concat([source_control_points, padding_matrix], dim=1)
+        mapping_matrix = mint.matmul(self.inverse_kernel.expand_dims(0), Y)
+        source_coordinate = mint.matmul(self.target_coordinate_repr.expand_dims(0), mapping_matrix)
+        grid = mint.reshape(
             source_coordinate,
             (-1, self.target_height, self.target_width, 2),
         )

@@ -3,7 +3,7 @@ import numpy as np
 import mindspore as ms
 import mindspore.common.initializer as init
 import mindspore.numpy as mnp
-from mindspore import Parameter, Tensor, nn, ops
+from mindspore import Parameter, Tensor, nn, ops, mint
 
 
 class PositionalEncoding(nn.Cell):
@@ -11,7 +11,7 @@ class PositionalEncoding(nn.Cell):
         super().__init__()
         pos_table = self._get_sinusoid_encoding_table(n_position, d_hid)
         self.pos_table = Parameter(Tensor(pos_table, ms.float32), requires_grad=False)  # do not update
-        self.add = ops.Add()
+        self.add = mint.add
 
     def _get_sinusoid_encoding_table(self, n_position, d_hid):
         def get_position_angle_vec(position):
@@ -29,9 +29,9 @@ class ScaledDotProductAttention(nn.Cell):
     def __init__(self, temperature: float, attn_dropout: float = 0.1):
         super().__init__()
         self.temperature = temperature
-        self.dropout = nn.Dropout(p=attn_dropout)
-        self.softmax = nn.Softmax(axis=2)
-        self.bmm = ops.BatchMatMul()
+        self.dropout = mint.nn.Dropout(p=attn_dropout)
+        self.softmax = mint.nn.Softmax(dim=2)
+        self.bmm = mint.bmm
         self.masked_fill = ops.MaskedFill()
 
     def construct(self, q, k, v, mask=None):
@@ -50,9 +50,9 @@ class PositionwiseFeedForward(nn.Cell):
         super().__init__()
         self.w_1 = nn.Conv1d(d_in, d_hid, kernel_size=1)  # position-wise
         self.w_2 = nn.Conv1d(d_hid, d_in, kernel_size=1)  # position-wise
-        self.layer_norm = nn.LayerNorm((d_in, ))
-        self.dropout = nn.Dropout(p=dropout)
-        self.relu = nn.ReLU()
+        self.layer_norm = mint.nn.LayerNorm((d_in, ))
+        self.dropout = mint.nn.Dropout(p=dropout)
+        self.relu = mint.nn.ReLU()
 
     def construct(self, x):
         residual = x
@@ -70,9 +70,9 @@ class MultiHeadAttention(nn.Cell):
         self.n_head = n_head
         self.d_k = d_k
         self.d_v = d_v
-        self.w_qs = nn.Dense(d_model, n_head * d_k)
-        self.w_ks = nn.Dense(d_model, n_head * d_k)
-        self.w_vs = nn.Dense(d_model, n_head * d_v)
+        self.w_qs = mint.nn.Linear(d_model, n_head * d_k)
+        self.w_ks = mint.nn.Linear(d_model, n_head * d_k)
+        self.w_vs = mint.nn.Linear(d_model, n_head * d_v)
         self.w_qs.weight.set_data(init.initializer(init.Normal(sigma=np.sqrt(2.0 / (d_model + d_k))),
                                                    self.w_qs.weight.shape))
         self.w_ks.weight.set_data(init.initializer(init.Normal(sigma=np.sqrt(2.0 / (d_model + d_k))),
@@ -81,10 +81,10 @@ class MultiHeadAttention(nn.Cell):
                                                    self.w_vs.weight.shape))
         # here
         self.attention = ScaledDotProductAttention(temperature=np.power(d_k, 0.5))
-        self.layer_norm = nn.LayerNorm((d_model,))
-        self.fc = nn.Dense(n_head * d_v, d_model)
+        self.layer_norm = mint.nn.LayerNorm((d_model,))
+        self.fc = mint.nn.Linear(n_head * d_v, d_model)
         self.fc.weight.set_data(init.initializer(init.XavierUniform(), self.fc.weight.shape))
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = mint.nn.Dropout(p=dropout)
 
     def construct(self, q, k, v, mask=None):
         d_k, d_v, n_head = self.d_k, self.d_v, self.n_head
@@ -98,7 +98,7 @@ class MultiHeadAttention(nn.Cell):
         q = q.transpose((2, 0, 1, 3)).view(-1, len_q, d_k)  # (n*b) x lq x dk
         k = k.transpose((2, 0, 1, 3)).view(-1, len_k, d_k)  # (n*b) x lk x dk
         v = v.transpose((2, 0, 1, 3)).view(-1, len_v, d_v)  # (n*b) x lv x dv
-        mask = ops.stack([mask]*n_head, 0) if mask is not None else None  # (n*b) x .. x ..
+        mask = mint.stack([mask]*n_head, 0) if mask is not None else None  # (n*b) x .. x ..
         output, attn = self.attention(q, k, v, mask=mask)
         output = output.view(n_head, sz_b, len_q, d_v)
         output = output.transpose((1, 2, 0, 3)).view(sz_b, len_q, -1)  # b x lq x (n*dv)
@@ -133,11 +133,11 @@ class TransformerEncoder(nn.Cell):
                  n_position: int = 256):
         super().__init__()
         self.position_enc = PositionalEncoding(d_word_vec, n_position=n_position)
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = mint.nn.Dropout(p=dropout)
         self.layer_stack = nn.CellList([
             EncoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout)
             for _ in range(n_layers)])
-        self.layer_norm = nn.LayerNorm((d_model,), epsilon=1e-6)
+        self.layer_norm = mint.nn.LayerNorm((d_model,), eps=1e-6)
 
     def construct(self, enc_output, src_mask, return_attns=False):
         enc_output = self.dropout(self.position_enc(enc_output))   # position embedding
@@ -152,12 +152,12 @@ class PP_Layer(nn.Cell):
         super().__init__()
         self.character_len = N_max_character
         self.f0_embedding = nn.Embedding(N_max_character, n_dim)
-        self.w0 = nn.Dense(N_max_character, n_position)
-        self.wv = nn.Dense(n_dim, n_dim)
-        self.we = nn.Dense(n_dim, N_max_character)
+        self.w0 = mint.nn.Linear(N_max_character, n_position)
+        self.wv = mint.nn.Linear(n_dim, n_dim)
+        self.we = mint.nn.Linear(n_dim, N_max_character)
         self.active = nn.Tanh()
-        self.softmax = nn.Softmax(axis=2)
-        self.bmm = ops.BatchMatMul()
+        self.softmax = mint.nn.Softmax(dim=2)
+        self.bmm = mint.bmm
 
     def construct(self, enc_output):
         # enc_output: b,256,512
@@ -178,8 +178,8 @@ class Prediction(nn.Cell):
         super().__init__()
         self.pp = PP_Layer(N_max_character=N_max_character, n_position=n_position)
         self.pp_share = PP_Layer(N_max_character=N_max_character, n_position=n_position)
-        self.w_vrm = nn.Dense(n_dim, n_class)    # output layer
-        self.w_share = nn.Dense(n_dim, n_class)    # output layer
+        self.w_vrm = mint.nn.Linear(n_dim, n_class)    # output layer
+        self.w_share = mint.nn.Linear(n_dim, n_class)    # output layer
         self.nclass = n_class
 
     def construct(self, cnn_feature, f_res, f_sub, is_train=False, use_mlm=True):
@@ -216,10 +216,10 @@ class MLM(nn.Cell):
         self.MLM_SequenceModeling_mask = TransformerEncoder(n_layers=2, n_position=n_position)
         self.MLM_SequenceModeling_WCL = TransformerEncoder(n_layers=1, n_position=n_position)
         self.pos_embedding = nn.Embedding(max_text_length, n_dim)
-        self.w0_linear = nn.Dense(1, n_position)
-        self.wv = nn.Dense(n_dim, n_dim)
+        self.w0_linear = mint.nn.Linear(1, n_position)
+        self.wv = mint.nn.Linear(n_dim, n_dim)
         self.active = nn.Tanh()
-        self.we = nn.Dense(n_dim, 1)
+        self.we = mint.nn.Linear(n_dim, 1)
         self.sigmoid = nn.Sigmoid()
 
     def construct(self, input, label_pos):
@@ -318,11 +318,11 @@ class MLM_VRM(nn.Cell):
                 # use the mask_c (1 for occluded character and 0 for remaining characters) to occlude input
                 # ratio controls the occluded number in a batch
                 ratio = b // 2
-                character_mask = ops.zeros_like(mask_c)
+                character_mask = mint.zeros_like(mask_c)
                 if ratio >= 1:
-                    condition = ops.tile(Tensor(mnp.arange(b))[:, None, None],
+                    condition = mint.tile(Tensor(mnp.arange(b))[:, None, None],
                                          (1, mask_c.shape[-2], mask_c.shape[-1])) < ratio
-                    character_mask = ops.where(condition, mask_c, character_mask)
+                    character_mask = mint.where(condition, mask_c, character_mask)
                 else:
                     character_mask = mask_c
                 input = input * (1 - character_mask.transpose((0, 2, 1)))

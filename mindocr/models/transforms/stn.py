@@ -4,7 +4,7 @@ import numpy as np
 
 import mindspore.nn as nn
 import mindspore.ops as ops
-from mindspore import Tensor
+from mindspore import Tensor, mint
 
 from ...utils.misc import is_ms_version_2
 from .tps_spatial_transformer import TPSSpatialTransformer
@@ -13,16 +13,15 @@ from .tps_spatial_transformer import TPSSpatialTransformer
 def conv3x3_block(
     in_channels: int, out_channels: int, stride: int = 1
 ) -> nn.SequentialCell:
-    conv_layer = nn.Conv2d(
+    conv_layer = mint.nn.Conv2d(
         in_channels,
         out_channels,
         kernel_size=3,
         stride=stride,
-        pad_mode="pad",
         padding=1,
-        has_bias=False,
+        bias=False,
     )
-    block = nn.SequentialCell(conv_layer, nn.BatchNorm2d(out_channels), nn.ReLU())
+    block = nn.SequentialCell(conv_layer, mint.nn.BatchNorm2d(out_channels), mint.nn.ReLU())
     return block
 
 
@@ -36,22 +35,22 @@ class STN(nn.Cell):
         self.activation = activation
         self.stn_convnet = nn.SequentialCell(
             conv3x3_block(in_channels, 32),  # 32x64
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            mint.nn.MaxPool2d(kernel_size=2, stride=2),
             conv3x3_block(32, 64),  # 16x32
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            mint.nn.MaxPool2d(kernel_size=2, stride=2),
             conv3x3_block(64, 128),  # 8*16
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            mint.nn.MaxPool2d(kernel_size=2, stride=2),
             conv3x3_block(128, 256),  # 4*8
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            mint.nn.MaxPool2d(kernel_size=2, stride=2),
             conv3x3_block(256, 256),  # 2*4,
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            mint.nn.MaxPool2d(kernel_size=2, stride=2),
             conv3x3_block(256, 256),
         )  # 1*2
         self.stn_fc1 = nn.SequentialCell(
-            nn.Dense(2 * 256, 512), nn.BatchNorm1d(512), nn.ReLU()
+            mint.nn.Linear(2 * 256, 512), mint.nn.BatchNorm1d(512), mint.nn.ReLU()
         )
         fc2_bias = self.init_stn()
-        self.stn_fc2 = nn.Dense(
+        self.stn_fc2 = mint.nn.Linear(
             512, num_ctrlpoints * 2, weight_init="zeros", bias_init=fc2_bias
         )
 
@@ -76,12 +75,12 @@ class STN(nn.Cell):
     def construct(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         x = self.stn_convnet(x)
         batch_size = x.shape[0]
-        x = ops.reshape(x, (batch_size, -1))
+        x = mint.reshape(x, (batch_size, -1))
         img_feat = self.stn_fc1(x)
         x = self.stn_fc2(0.1 * img_feat)
         if self.activation == "sigmoid":
             x = ops.sigmoid(x)
-        x = ops.reshape(x, (-1, self.num_ctrlpoints, 2))
+        x = mint.reshape(x, (-1, self.num_ctrlpoints, 2))
         return img_feat, x
 
 

@@ -3,7 +3,7 @@ import math
 import numpy as np
 
 import mindspore as ms
-from mindspore import nn
+from mindspore import nn, mint
 
 from ..utils.abinet_layers import ABINetBlock, PositionalEncoding
 from ..utils.abinet_layers import TransformerDecoder as ms_TransformerDecoder
@@ -28,7 +28,7 @@ class ABINetHead(nn.Cell):
         all_l_res = []
         all_a_res = []
         for _ in range(self.iter_size):
-            ms_softmax = nn.Softmax()
+            ms_softmax = mint.nn.Softmax()
             tokens = ms_softmax(a_res["logits"])
             lengths = a_res["pt_lengths"]
             lengths = ms.ops.clip_by_value(lengths, 2, self.max_length)
@@ -80,15 +80,15 @@ class BaseAlignment(ABINetBlock):
 
         self.loss_weight = 1.0
         self.max_length = 26  # additional stop token
-        self.w_att = nn.Dense(
+        self.w_att = mint.nn.Linear(
             2 * d_model, d_model, weight_init='HeUniform', bias_init='uniform'
         )
-        self.cls = nn.Dense(
+        self.cls = mint.nn.Linear(
             d_model,
             self.charset.num_classes, weight_init='HeUniform', bias_init='uniform'
         )
         for _, cell in self.cells_and_names():
-            if isinstance(cell, nn.Dense):
+            if isinstance(cell, mint.nn.Linear):
                 print("Dense Init HeUniform")
                 cell.weight.set_data(ms.common.initializer.initializer(
                     ms.common.initializer.HeUniform(negative_slope=math.sqrt(5), mode="fan_in",
@@ -103,9 +103,9 @@ class BaseAlignment(ABINetBlock):
 
     def construct(self, l_feature, v_feature):
 
-        f = ms.ops.concat((l_feature, v_feature), axis=2)
+        f = ms.mint.concat((l_feature, v_feature), dim=2)
 
-        f_att = ms.ops.sigmoid(self.w_att(f))
+        f_att = ms.mint.sigmoid(self.w_att(f))
 
         output = f_att * v_feature + (1 - f_att) * l_feature
         logits = self.cls(output)  # (N, T, C)
@@ -137,12 +137,12 @@ class BCNLanguage(ABINetBlock):
         self.max_length = 26  # additional stop token
         self.debug = False
 
-        self.proj = nn.Dense(
+        self.proj = mint.nn.Linear(
             self.charset.num_classes,
             d_model,
             weight_init="uniform",
             bias_init="uniform",
-            has_bias=False,
+            bias=False,
         )
         self.token_encoder = PositionalEncoding(d_model, max_len=self.max_length)
         self.pos_encoder = PositionalEncoding(
@@ -161,7 +161,7 @@ class BCNLanguage(ABINetBlock):
             tgt_seq_length=26,
         )
 
-        self.cls = nn.Dense(
+        self.cls = mint.nn.Linear(
             self.d_model,
             self.charset.num_classes,
             weight_init="uniform",
@@ -169,7 +169,7 @@ class BCNLanguage(ABINetBlock):
         )
 
     def mindspore_decoder_mask(self, lengths):
-        ms_unqueeze = ms.ops.expand_dims
+        ms_unqueeze = ms.mint.unsqueeze
         ms_pad_mask = self._get_padding_mask(lengths, 26)
         ms_pad_mask = ms_unqueeze(ms_pad_mask, -2)
         ms_eye_mask = self._get_location_mask(26)
@@ -180,7 +180,7 @@ class BCNLanguage(ABINetBlock):
         return (out_mask).astype(ms.float16)
 
     def _get_padding_mask(self, length, max_length):
-        ms_unqueeze = ms.ops.expand_dims
+        ms_unqueeze = ms.mint.unsqueeze
         length = ms_unqueeze(length, -1)
         grid = ms.numpy.arange(0, max_length)
         grid = ms_unqueeze(grid, 0)
@@ -205,7 +205,7 @@ class BCNLanguage(ABINetBlock):
         embed = embed.transpose(1, 0, 2)
         embed = self.token_encoder(embed)  # (T, N, E)
         embed = embed.transpose(1, 0, 2)
-        zeros = ms.ops.zeros((self.batchsize, 26, 512), ms.float32)
+        zeros = ms.mint.zeros((self.batchsize, 26, 512), dtype=ms.float32)
         zeros = zeros.transpose(1, 0, 2)
         query = self.pos_encoder(zeros)
         query = query.transpose(1, 0, 2)

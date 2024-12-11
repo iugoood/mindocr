@@ -1,7 +1,7 @@
 import numpy as np
 
 import mindspore as ms
-from mindspore import Tensor, nn, ops
+from mindspore import Tensor, nn, ops, mint
 from mindspore.nn.loss.loss import LossBase
 
 __all__ = ["CTCLoss", "AttentionLoss", "VisionLANLoss"]
@@ -51,7 +51,7 @@ class CTCLoss(LossBase):
         """
         dtype = pred.dtype
         logit = pred.astype(ms.float32)
-        label_values = ops.reshape(label, (-1,))
+        label_values = mint.reshape(label, (-1,))
 
         loss, _ = self.ctc_loss(logit, self.label_indices, label_values, self.sequence_length)
         loss = self.get_loss(loss.astype(dtype))
@@ -93,7 +93,7 @@ class VisionLANLoss(LossBase):
         # 2. if some samples' lengths equal to max_len, then the tensor would not be updated
         indices = label_length[:, None]
         nonzero_mask = ops.cast(target != 0, ms.float32)
-        updates = ops.ones(indices.shape, nonzero_mask.dtype)
+        updates = mint.ones(indices.shape, dtype=nonzero_mask.dtype)
         nonzero_mask = ops.tensor_scatter_elements(nonzero_mask, indices, updates, axis=1)
         nonzero_mask = ops.cast(nonzero_mask, ms.bool_)
         target[~nonzero_mask] = target_value
@@ -152,8 +152,8 @@ class AttentionLoss(LossBase):
     def construct(self, logits: Tensor, labels: Tensor) -> Tensor:
         labels = labels[:, 1:]  # without <GO> symbol
         num_classes = logits.shape[-1]
-        logits = ops.reshape(logits, (-1, num_classes))
-        labels = ops.reshape(labels, (-1,))
+        logits = mint.reshape(logits, (-1, num_classes))
+        labels = mint.reshape(labels, (-1,))
         return self.criterion(logits, labels)
 
 
@@ -171,7 +171,7 @@ class SARLoss(LossBase):
             len(label.shape) == len(list(predict.shape)) - 1
         ), "The target's shape and inputs' shape is [N, d] and [N, num_steps]"
 
-        inputs = ops.reshape(predict, (-1, num_classes))
-        targets = ops.reshape(label, (-1,))
+        inputs = mint.reshape(predict, (-1, num_classes))
+        targets = mint.reshape(label, (-1,))
         loss = self.loss_func(inputs, targets)
         return loss

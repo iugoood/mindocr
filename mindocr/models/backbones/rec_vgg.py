@@ -1,6 +1,6 @@
 import mindspore.nn as nn
 from mindspore.common.initializer import TruncatedNormal
-
+from mindspore import mint
 from ._registry import register_backbone, register_backbone_class
 
 __all__ = ['RecVGG', 'rec_vgg7']
@@ -10,14 +10,12 @@ class Conv(nn.Cell):
     def __init__(self, in_channel, out_channel, kernel_size=3, stride=1, use_bn=False, pad_mode='pad', padding=0):
         super(Conv, self).__init__()
 
-        self.Relu = nn.ReLU()
-        self.conv = nn.Conv2d(in_channel, out_channel, kernel_size=kernel_size, stride=stride,
-                              padding=padding, pad_mode=pad_mode,
-                              has_bias=True, bias_init=TruncatedNormal(), weight_init=TruncatedNormal(0.02))
+        self.Relu = mint.nn.ReLU()
+        self.conv = mint.nn.Conv2d(in_channel, out_channel, kernel_size=kernel_size, stride=stride,
+                              padding=padding, bias=True)
 
         if use_bn:
-            self.bn = nn.BatchNorm2d(num_features=out_channel, eps=1e-4, momentum=0.9,
-                                     gamma_init=1, beta_init=0, moving_mean_init=0, moving_var_init=1)
+            self.bn = mint.nn.BatchNorm2d(num_features=out_channel, eps=1e-4, momentum=0.9)
 
         self.use_bn = use_bn
 
@@ -56,10 +54,10 @@ class RecVGG(nn.Cell):
         self.conv6 = Conv(512, 512, use_bn=False, padding=1)
         self.conv7 = Conv(512, 512, kernel_size=2,
                           pad_mode='valid', padding=0, use_bn=True)
-        self.maxpool2d1 = nn.MaxPool2d(
-            kernel_size=2, stride=2, pad_mode='same')
-        self.maxpool2d2 = nn.MaxPool2d(kernel_size=(
-            2, 1), stride=(2, 1), pad_mode='same')
+        self.maxpool2d1 = mint.nn.MaxPool2d(
+            kernel_size=2, stride=2)
+        self.maxpool2d2 = mint.nn.MaxPool2d(kernel_size=(
+            2, 1), stride=(2, 1))
 
         self.out_channels = 512
 

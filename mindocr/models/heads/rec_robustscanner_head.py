@@ -2,7 +2,7 @@ import mindspore as ms
 import mindspore.common.dtype as mstype
 import mindspore.numpy as np
 import mindspore.ops as ops
-from mindspore import nn
+from mindspore import nn, mint
 
 
 class BaseDecoder(nn.Cell):
@@ -43,7 +43,7 @@ class ChannelReductionEncoder(nn.Cell):
                  **kwargs):
         super(ChannelReductionEncoder, self).__init__()
 
-        self.layer = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
+        self.layer = mint.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
 
     def construct(self, feat):
         """
@@ -64,10 +64,10 @@ class DotProductAttentionLayer(nn.Cell):
 
         self.scale = dim_model ** -0.5 if dim_model is not None else 1.
 
-        self.transpose = ops.Transpose()
-        self.matmul = ops.MatMul()
-        self.batchmatmul = ops.BatchMatMul()
-        self.softmax = ops.Softmax(axis=2)
+        self.transpose = mint.permute
+        self.matmul = mint.matmul
+        self.batchmatmul = mint.bmm
+        self.softmax = mint.nn.Softmax(dim=2)
 
     def construct(self, query, key, value, h, w, valid_width_masks=None):
         query = self.transpose(query, (0, 2, 1))
@@ -87,7 +87,7 @@ class DotProductAttentionLayer(nn.Cell):
                 valid_width_mask = ops.cast(valid_width_mask, ms.bool_)
                 logits_i = ops.select(valid_width_mask, logits_i, float('-inf'))  # (c*h, w)
                 logits_list.append(logits_i.view((c, h, w)))  # (c, h, w)
-            logits = ops.concat(logits_list, axis=0)
+            logits = mint.concat(logits_list, dim=0)
         # reshape to (n, c, h, w)
         logits = logits.view((n, c, t))
 
@@ -147,11 +147,11 @@ class SequenceAttentionDecoder(BaseDecoder):
         self.start_idx = start_idx
         self.mask = mask
 
-        self.transpose = ops.Transpose()
-        self.ones = ops.Ones()
+        self.transpose = mint.permute
+        self.ones = mint.ones
         self.argmax = ops.ArgMaxWithValue(axis=1)
-        self.stack = ops.Stack()
-        self.softmax = ops.Softmax(axis=-1)
+        self.stack = mint.stack
+        self.softmax = mint.nn.Softmax(dim=-1)
 
         self.embedding = nn.Embedding(
             self.num_classes, self.dim_model, padding_idx=padding_idx)
@@ -167,7 +167,7 @@ class SequenceAttentionDecoder(BaseDecoder):
         self.prediction = None
         if not self.return_feature:
             pred_num_classes = num_classes - 1
-            self.prediction = nn.Dense(
+            self.prediction = mint.nn.Linear(
                 dim_model if encode_value else dim_input, pred_num_classes)
 
     def forward_train(self, feat, out_enc, targets, valid_width_masks):
@@ -229,7 +229,7 @@ class SequenceAttentionDecoder(BaseDecoder):
         seq_len = self.max_seq_len
         batch_size = feat.shape[0]
 
-        decode_sequence = (self.ones((batch_size, seq_len), mstype.int64) * self.start_idx)
+        decode_sequence = (self.ones((batch_size, seq_len), dtype=mstype.int64) * self.start_idx)
 
         outputs = []
         for i in range(seq_len):
@@ -298,7 +298,7 @@ class PositionAwareLayer(nn.Cell):
 
         self.dim_model = dim_model
 
-        self.transpose = ops.Transpose()
+        self.transpose = mint.permute
 
         self.rnn = nn.LSTM(
             input_size=dim_model,
@@ -306,11 +306,11 @@ class PositionAwareLayer(nn.Cell):
             num_layers=rnn_layers)
 
         self.mixer = nn.SequentialCell(
-            nn.Conv2d(
-                dim_model, dim_model, kernel_size=3, stride=1, padding=1, pad_mode='pad'),
-            nn.ReLU(),
-            nn.Conv2d(
-                dim_model, dim_model, kernel_size=3, stride=1, padding=1, pad_mode='pad'))
+            mint.nn.Conv2d(
+                dim_model, dim_model, kernel_size=3, stride=1, padding=1),
+            mint.nn.ReLU(),
+            mint.nn.Conv2d(
+                dim_model, dim_model, kernel_size=3, stride=1, padding=1))
 
     def construct(self, img_feature):
         n, c, h, w = img_feature.shape
@@ -372,8 +372,8 @@ class PositionAttentionDecoder(BaseDecoder):
         self.encode_value = encode_value
         self.mask = mask
 
-        self.transpose = ops.Transpose()
-        self.stack = ops.Stack()
+        self.transpose = mint.permute
+        self.stack = mint.stack
 
         self.embedding = nn.Embedding(self.max_seq_len + 1, self.dim_model)
 
@@ -385,7 +385,7 @@ class PositionAttentionDecoder(BaseDecoder):
         self.prediction = None
         if not self.return_feature:
             pred_num_classes = num_classes - 1
-            self.prediction = nn.Dense(
+            self.prediction = mint.nn.Linear(
                 dim_model if encode_value else dim_input, pred_num_classes)
 
     def _get_position_index(self, length, batch_size):
@@ -486,15 +486,15 @@ class RobustScannerFusionLayer(nn.Cell):
 
         self.dim_model = dim_model
         self.dim = dim
-        self.linear_layer = nn.Dense(dim_model * 2, dim_model * 2)
-        self.concat = ops.Concat(axis=self.dim)
+        self.linear_layer = mint.nn.Linear(dim_model * 2, dim_model * 2)
+        self.concat = mint.concat
         self.split = ops.Split(dim, 2)
         self.sigmoid = ops.Sigmoid()
-        self.mul = ops.Mul()
+        self.mul = mint.mul
 
     def construct(self, x0, x1):
         assert x0.shape == x1.shape
-        fusion_input = self.concat([x0, x1])
+        fusion_input = self.concat([x0, x1], dim=self.dim)
         output = self.linear_layer(fusion_input)
         output_split = self.split(output)
         a1 = output_split[0]
@@ -552,10 +552,10 @@ class RobustScannerDecoder(BaseDecoder):
         self.padding_idx = padding_idx
         self.mask = mask
 
-        self.ones = ops.Ones()
-        self.softmax = ops.Softmax(axis=-1)
+        self.ones = mint.ones
+        self.softmax = mint.nn.Softmax(dim=-1)
         self.argmax = ops.ArgMaxWithValue(axis=1)
-        self.stack = ops.Stack(axis=1)
+        self.stack = mint.stack
 
         # init hybrid decoder
         self.hybrid_decoder = SequenceAttentionDecoder(
@@ -588,7 +588,7 @@ class RobustScannerDecoder(BaseDecoder):
             self.dim_model if encode_value else dim_input)
 
         pred_num_classes = num_classes - 1
-        self.prediction = nn.Dense(dim_model if encode_value else dim_input,
+        self.prediction = mint.nn.Linear(dim_model if encode_value else dim_input,
                                    pred_num_classes)
 
     def forward_train(self, feat, out_enc, target, valid_width_masks, word_positions):
@@ -632,7 +632,7 @@ class RobustScannerDecoder(BaseDecoder):
         seq_len = self.max_seq_len
         batch_size = feat.shape[0]
 
-        decode_sequence = (self.ones((batch_size, seq_len), mstype.int64) * self.start_idx)
+        decode_sequence = (self.ones((batch_size, seq_len), dtype=mstype.int64) * self.start_idx)
 
         position_glimpse = self.position_decoder.forward_test(
             feat, out_enc, valid_width_masks, word_positions)
@@ -655,7 +655,7 @@ class RobustScannerDecoder(BaseDecoder):
                 decode_sequence[:, i + 1] = max_idx
                 decode_sequence = ops.cast(decode_sequence, ms.int64)
 
-        outputs = self.stack(outputs)
+        outputs = self.stack(outputs, dim=1)
 
         return outputs
 

@@ -3,7 +3,7 @@ build models
 """
 from typing import Union
 
-from mindspore.amp import auto_mixed_precision
+from .utils.amp import auto_mixed_precision
 
 from ._registry import is_model, list_models, model_entrypoint
 from .base_model import BaseModel

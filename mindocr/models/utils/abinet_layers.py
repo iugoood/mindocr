@@ -6,7 +6,7 @@ import mindspore as ms
 import mindspore.common.dtype as mstype
 from mindspore import _checkparam as Validator
 from mindspore import log as logger
-from mindspore import nn
+from mindspore import nn, mint
 from mindspore.common.parameter import Parameter
 from mindspore.common.tensor import Tensor
 from mindspore.context import ParallelMode
@@ -83,7 +83,7 @@ class ABINetBlock(nn.Cell):
 
     @staticmethod
     def _get_location_mask(sz, device=None):
-        eyes = ms.ops.Eye()
+        eyes = ms.mint.eye
         mask1 = eyes(sz, sz, ms.bool_)
         cast = ms.ops.Cast()
         mask = cast(mask1, ms.float32)
@@ -186,9 +186,9 @@ def onehot(label, depth, device=None):
 
 def encoder_layer(in_c, out_c, k=3, s=2, p=1):
     return nn.SequentialCell(
-        nn.Conv2d(in_c, out_c, k, s, pad_mode="pad", padding=p, has_bias=True),
-        nn.BatchNorm2d(out_c, momentum=0.1),
-        nn.ReLU(),
+        mint.nn.Conv2d(in_c, out_c, k, s, padding=p, bias=True),
+        mint.nn.BatchNorm2d(out_c, momentum=0.1),
+        mint.nn.ReLU(),
     )
 
 
@@ -230,9 +230,9 @@ def decoder_layer1(
     align_corners = False if mode == "nearest" else True
     return nn.SequentialCell(
         ms_upsample_scale(scale_factor, align_corners=align_corners),
-        nn.Conv2d(in_c, out_c, k, s, pad_mode="pad", padding=p, has_bias=True),
-        nn.BatchNorm2d(out_c, momentum=0.1),
-        nn.ReLU(),
+        mint.nn.Conv2d(in_c, out_c, k, s, padding=p, bias=True),
+        mint.nn.BatchNorm2d(out_c, momentum=0.1),
+        mint.nn.ReLU(),
     )
 
 
@@ -242,9 +242,9 @@ def decoder_layer2(
     align_corners = False if mode == "nearest" else True
     return nn.SequentialCell(
         ms_upsample_size(size, align_corners=align_corners),
-        nn.Conv2d(in_c, out_c, k, s, pad_mode="pad", padding=p, has_bias=True),
-        nn.BatchNorm2d(out_c, momentum=0.1),
-        nn.ReLU(),
+        mint.nn.Conv2d(in_c, out_c, k, s, padding=p, bias=True),
+        mint.nn.BatchNorm2d(out_c, momentum=0.1),
+        mint.nn.ReLU(),
     )
 
 
@@ -282,7 +282,7 @@ class PositionAttention(nn.Cell):
         self.pos_encoder = PositionalEncoding(
             in_channels, dropout=1.0, max_len=max_length
         )
-        self.project = nn.Dense(
+        self.project = mint.nn.Linear(
             in_channels, in_channels, weight_init="HeUniform", bias_init="uniform"
         )
 
@@ -309,18 +309,18 @@ class PositionAttention(nn.Cell):
         k_1, k_2, k_3, k_4 = k.shape
         # calculate query vector
         # TODO q=f(q,k)
-        zeros = ms.ops.Zeros()
-        x_zeros = zeros((self.max_length, N, E), ms.float32)  # (T, N, E)
+        zeros = ms.mint.zeros
+        x_zeros = zeros((self.max_length, N, E), dtype=ms.float32)  # (T, N, E)
         q = self.pos_encoder(x_zeros)  # (T, N, E)
         q = q.transpose(1, 0, 2)
         q = self.project(q)  # (N, T, E)
 
         # calculate attention
         k_attn = k.view(k_1, k_2, -1)
-        batmatmul = ms.ops.BatchMatMul()
+        batmatmul = ms.mint.bmm
         attn_scores = batmatmul(q, k_attn)  # (N, T, (H*W))
         attn_scores = attn_scores / (E**0.5)
-        softmax_attn = nn.Softmax()
+        softmax_attn = mint.nn.Softmax()
         attn_scores = softmax_attn(attn_scores)
         v = v.transpose(0, 2, 3, 1)
         v = v.view(N, -1, E)  # (N, (H*W), E)
@@ -332,7 +332,7 @@ class PositionAttention(nn.Cell):
 class PositionalEncoding(nn.Cell):
     def __init__(self, d_model=512, dropout=0.9, max_len=5000):
         super(PositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=1 - dropout)
+        self.dropout = mint.nn.Dropout(p=1 - dropout)
         pe = np.zeros((max_len, d_model), np.float32)
         position = np.arange(0, max_len, dtype=np.float32)
         position = np.expand_dims(position, 1)
@@ -1594,7 +1594,7 @@ class TransformerDecoder(Cell):
         ):
             _check_config(parallel_config)
 
-            self.add = P.Add()
+            self.add = mint.add
             self.aux_loss = Tensor(0.0, mstype.float32)
             self.num_layers = num_layers
             self.blocks = nn.CellList()

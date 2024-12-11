@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Type
 
-from mindspore import Tensor, nn
+from mindspore import Tensor, nn, mint
 
 from ._registry import register_backbone, register_backbone_class
 from .blocks import MultiAspectGCAttention
@@ -23,24 +23,22 @@ class BasicBlockGCAtten(nn.Cell):
     ) -> None:
         super().__init__()
         if norm is None:
-            norm = nn.BatchNorm2d
-        self.conv1 = nn.Conv2d(
+            norm = mint.nn.BatchNorm2d
+        self.conv1 = mint.nn.Conv2d(
             in_channels,
             out_channels,
             kernel_size=3,
             stride=stride,
             padding=1,
-            pad_mode="pad",
         )
         self.bn1 = norm(out_channels)
-        self.relu = nn.ReLU()
-        self.conv2 = nn.Conv2d(
+        self.relu = mint.nn.ReLU()
+        self.conv2 = mint.nn.Conv2d(
             out_channels,
             out_channels,
             kernel_size=3,
             stride=1,
             padding=1,
-            pad_mode="pad",
         )
         self.bn2 = norm(out_channels)
         self.down_sample = down_sample
@@ -103,7 +101,7 @@ class RecResNetMaster(nn.Cell):
     ) -> None:
         super().__init__()
         if norm is None:
-            norm = nn.BatchNorm2d
+            norm = mint.nn.BatchNorm2d
 
         if gcb_config is None:
             gcb_config = dict(layers=[False]*len(layers))
@@ -112,25 +110,23 @@ class RecResNetMaster(nn.Cell):
         self.input_channels = 128
         self.out_channels = 512
 
-        self.conv1 = nn.Conv2d(
+        self.conv1 = mint.nn.Conv2d(
             in_channels,
             64,
             kernel_size=3,
-            pad_mode="pad",
             padding=1,
         )
         self.bn1 = norm(64)
-        self.relu = nn.ReLU()
+        self.relu = mint.nn.ReLU()
 
-        self.conv2 = nn.Conv2d(
+        self.conv2 = mint.nn.Conv2d(
             64,
             128,
             kernel_size=3,
-            pad_mode="pad",
             padding=1,
         )
         self.bn2 = norm(128)
-        self.max_pool = nn.MaxPool2d(kernel_size=2, stride=2, pad_mode="same")
+        self.max_pool = mint.nn.MaxPool2d(kernel_size=2, stride=2)
 
         self.layer1 = self._make_layer(
             block,
@@ -139,14 +135,13 @@ class RecResNetMaster(nn.Cell):
             use_gcb=gcb_config["layers"][0],
             gcb_config=gcb_config,
         )
-        self.conv3 = nn.Conv2d(
+        self.conv3 = mint.nn.Conv2d(
             256,
             256,
             kernel_size=3,
-            pad_mode="pad",
             padding=1,
         )
-        self.bn3 = nn.BatchNorm2d(256)
+        self.bn3 = mint.nn.BatchNorm2d(256)
 
         self.layer2 = self._make_layer(
             block,
@@ -155,17 +150,16 @@ class RecResNetMaster(nn.Cell):
             use_gcb=gcb_config["layers"][1],
             gcb_config=gcb_config,
         )
-        self.conv4 = nn.Conv2d(
+        self.conv4 = mint.nn.Conv2d(
             256,
             256,
             kernel_size=3,
-            pad_mode="pad",
             padding=1,
         )
-        self.bn4 = nn.BatchNorm2d(256)
+        self.bn4 = mint.nn.BatchNorm2d(256)
 
-        self.max_pool_2 = nn.MaxPool2d(
-            kernel_size=(2, 1), stride=(2, 1), pad_mode="same"
+        self.max_pool_2 = mint.nn.MaxPool2d(
+            kernel_size=(2, 1), stride=(2, 1)
         )
 
         self.layer3 = self._make_layer(
@@ -175,14 +169,13 @@ class RecResNetMaster(nn.Cell):
             use_gcb=gcb_config["layers"][2],
             gcb_config=gcb_config,
         )
-        self.conv5 = nn.Conv2d(
+        self.conv5 = mint.nn.Conv2d(
             512,
             512,
             kernel_size=3,
-            pad_mode="pad",
             padding=1,
         )
-        self.bn5 = nn.BatchNorm2d(512)
+        self.bn5 = mint.nn.BatchNorm2d(512)
 
         self.layer4 = self._make_layer(
             block,
@@ -191,14 +184,13 @@ class RecResNetMaster(nn.Cell):
             use_gcb=gcb_config["layers"][3],
             gcb_config=gcb_config,
         )
-        self.conv6 = nn.Conv2d(
+        self.conv6 = mint.nn.Conv2d(
             512,
             512,
             kernel_size=3,
-            pad_mode="pad",
             padding=1,
         )
-        self.bn6 = nn.BatchNorm2d(512)
+        self.bn6 = mint.nn.BatchNorm2d(512)
 
     def _make_layer(
         self,
@@ -215,13 +207,13 @@ class RecResNetMaster(nn.Cell):
         if stride != 1 or self.input_channels != channels * block.expansion:
             down_sample = nn.SequentialCell(
                 [
-                    nn.Conv2d(
+                    mint.nn.Conv2d(
                         self.input_channels,
                         channels * block.expansion,
                         kernel_size=1,
                         stride=stride,
                     ),
-                    nn.BatchNorm2d(channels * block.expansion),
+                    mint.nn.BatchNorm2d(channels * block.expansion),
                 ]
             )
 

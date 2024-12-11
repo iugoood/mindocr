@@ -1,7 +1,7 @@
 from typing import List, Optional, Type, Union
 
 import mindspore.common.initializer as init
-from mindspore import Tensor, nn
+from mindspore import Tensor, nn, mint
 
 from ._registry import register_backbone, register_backbone_class
 
@@ -24,16 +24,16 @@ class BasicBlock(nn.Cell):
     ) -> None:
         super().__init__()
         if norm is None:
-            norm = nn.BatchNorm2d
+            norm = mint.nn.BatchNorm2d
         assert groups == 1, "BasicBlock only supports groups=1"
         assert base_width == 64, "BasicBlock only supports base_width=64"
 
-        self.conv1 = nn.Conv2d(in_channels, channels, kernel_size=3,
-                               stride=stride, padding=1, pad_mode="pad")
+        self.conv1 = mint.nn.Conv2d(in_channels, channels, kernel_size=3,
+                               stride=stride, padding=1)
         self.bn1 = norm(channels)
-        self.relu = nn.ReLU()
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3,
-                               stride=1, padding=1, pad_mode="pad")
+        self.relu = mint.nn.ReLU()
+        self.conv2 = mint.nn.Conv2d(channels, channels, kernel_size=3,
+                               stride=1, padding=1)
         self.bn2 = norm(channels)
         self.down_sample = down_sample
 
@@ -71,7 +71,7 @@ class Bottleneck(nn.Cell):
     ) -> None:
         super().__init__()
         if norm is None:
-            norm = nn.BatchNorm2d
+            norm = mint.nn.BatchNorm2d
 
         width = int(channels * (base_width / 64.0)) * groups
 
@@ -83,7 +83,7 @@ class Bottleneck(nn.Cell):
         self.conv3 = nn.Conv2d(width, channels * self.expansion,
                                kernel_size=1, stride=1)
         self.bn3 = norm(channels * self.expansion)
-        self.relu = nn.ReLU()
+        self.relu = mint.nn.ReLU()
         self.down_sample = down_sample
 
     def construct(self, x: Tensor) -> Tensor:
@@ -136,7 +136,7 @@ class RecResNet45(nn.Cell):
     ) -> None:
         super().__init__()
         if norm is None:
-            norm = nn.BatchNorm2d
+            norm = mint.nn.BatchNorm2d
 
         self.norm: nn.Cell = norm  # add type hints to make pylint happy
         self.input_channels = 32
@@ -144,10 +144,10 @@ class RecResNet45(nn.Cell):
         self.base_with = base_width
         self.out_channels = [512]
 
-        self.conv1 = nn.Conv2d(in_channels, self.input_channels, kernel_size=3,
-                               stride=1, pad_mode="same")
+        self.conv1 = mint.nn.Conv2d(in_channels, self.input_channels, kernel_size=3,
+                               stride=1)
         self.bn1 = norm(self.input_channels)
-        self.relu = nn.ReLU()
+        self.relu = mint.nn.ReLU()
 
         self.layer1 = self._make_layer(block, 32, layers[0], stride=strides[0])
         self.layer2 = self._make_layer(block, 64, layers[1], stride=strides[1])
@@ -160,17 +160,17 @@ class RecResNet45(nn.Cell):
     def _initialize_weights(self) -> None:
         """Initialize weights for cells."""
         for _, cell in self.cells_and_names():
-            if isinstance(cell, nn.Conv2d):
+            if isinstance(cell, mint.nn.Conv2d):
                 cell.weight.set_data(
                     init.initializer(init.HeNormal(mode='fan_out', nonlinearity='relu'),
                                      cell.weight.shape, cell.weight.dtype))
                 if cell.bias is not None:
                     cell.bias.set_data(
                         init.initializer('zeros', cell.bias.shape, cell.bias.dtype))
-            elif isinstance(cell, nn.BatchNorm2d):
-                cell.gamma.set_data(init.initializer('ones', cell.gamma.shape, cell.gamma.dtype))
-                cell.beta.set_data(init.initializer('zeros', cell.beta.shape, cell.beta.dtype))
-            elif isinstance(cell, nn.Dense):
+            elif isinstance(cell, mint.nn.BatchNorm2d):
+                cell.running_var.set_data(init.initializer('ones', cell.running_var.shape, cell.running_var.dtype))
+                cell.running_mean.set_data(init.initializer('zeros', cell.running_mean.shape, cell.running_mean.dtype))
+            elif isinstance(cell, mint.nn.Linear):
                 cell.weight.set_data(
                     init.initializer(init.HeUniform(mode='fan_in', nonlinearity='sigmoid'),
                                      cell.weight.shape, cell.weight.dtype))
@@ -189,7 +189,7 @@ class RecResNet45(nn.Cell):
 
         if stride != 1 or self.input_channels != channels * block.expansion:
             down_sample = nn.SequentialCell([
-                nn.Conv2d(self.input_channels, channels * block.expansion, kernel_size=1, stride=stride),
+                mint.nn.Conv2d(self.input_channels, channels * block.expansion, kernel_size=1, stride=stride),
                 self.norm(channels * block.expansion)
             ])
 

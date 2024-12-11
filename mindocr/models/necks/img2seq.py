@@ -2,7 +2,7 @@ from typing import List
 
 import mindspore.nn as nn
 import mindspore.ops as ops
-from mindspore import Tensor
+from mindspore import Tensor, mint
 
 __all__ = ["Img2Seq"]
 
@@ -21,6 +21,6 @@ class Img2Seq(nn.Cell):
 
     def construct(self, features: List[Tensor]) -> Tensor:
         x = features[0]
-        x = ops.squeeze(x, axis=2)
-        x = ops.transpose(x, (2, 0, 1))
+        x = mint.squeeze(x, dim=2)
+        x = mint.permute(x, (2, 0, 1))
         return x
